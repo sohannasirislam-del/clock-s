@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>24-Hour Concentric Analog Clock</title>
+  <style>
+    :root {
+      --bg: #050507;
+      --surface: rgba(255, 255, 255, 0.05);
+      --border: rgba(255, 255, 255, 0.14);
+      --text: #ffffff;
+      --muted: rgba(255, 255, 255, 0.55);
+      --tick: rgba(255, 255, 255, 0.48);
+      --tick-major: rgba(255, 255, 255, 0.92);
+      --accent: #38bdf8;
+      --clock-size: min(80vw, 64vh, 380px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      background: radial-gradient(circle at 50% 44%, #11131a 0%, var(--bg) 68%);
+      color: var(--text);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 12px 16px;
+      gap: 14px;
+    }
+
+    .stage {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: var(--clock-size);
+      height: var(--clock-size);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .clock {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at center, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 58%, transparent 72%);
+      box-shadow: inset 0 0 40px rgba(255, 255, 255, 0.025);
+    }
+
+    .ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      will-change: transform;
+    }
+
+    .spike {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      transform-origin: 0 0;
+      transform: rotate(var(--angle));
+      pointer-events: none;
+    }
+
+    .spike::before {
+      content: "";
+      position: absolute;
+      top: -0.75px;
+      left: var(--r);
+      width: calc(var(--clock-size) * 0.022);
+      height: 1.5px;
+      background: var(--tick);
+      border-radius: 2px;
+    }
+
+    .spike.major::before {
+      width: calc(var(--clock-size) * 0.042);
+      height: 2px;
+      top: -1px;
+      background: var(--tick-major);
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
+    }
+
+    .spike-label {
+      position: absolute;
+      left: var(--label-r);
+      top: 0;
+      transform: translate(-50%, -50%) rotate(calc(-1 * var(--angle) - var(--ring-rot, 0deg)));
+      font-size: calc(var(--clock-size) * 0.036);
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.88);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+
+    .seconds .spike {
+      --r: calc(var(--clock-size) * 0.455);
+      --label-r: calc(var(--clock-size) * 0.395);
+    }
+
+    .minutes .spike {
+      --r: calc(var(--clock-size) * 0.31);
+      --label-r: calc(var(--clock-size) * 0.252);
+    }
+
+    /* Center 24-hour display with Sun/Moon sky arc */
+    .hour-center {
+      position: absolute;
+      inset: 0;
+      margin: auto;
+      width: calc(var(--clock-size) * 0.39);
+      height: calc(var(--clock-size) * 0.39);
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: calc(var(--clock-size) * 0.045);
+      z-index: 6;
+      pointer-events: none;
+      overflow: hidden;
+      transition: background 0.5s ease, box-shadow 0.5s ease;
+    }
+
+    .hour-center.is-day {
+      background: radial-gradient(circle at 50% 35%, rgba(251, 191, 36, 0.16) 0%, rgba(245, 158, 11, 0.04) 58%, transparent 78%);
+      box-shadow: inset 0 0 18px rgba(251, 191, 36, 0.08);
+    }
+
+    .hour-center.is-night {
+      background: radial-gradient(circle at 50% 35%, rgba(129, 140, 248, 0.16) 0%, rgba(56, 189, 248, 0.04) 58%, transparent 78%);
+      box-shadow: inset 0 0 18px rgba(129, 140, 248, 0.08);
+    }
+
+    .celestial-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .hour-value {
+      position: relative;
+      z-index: 2;
+      font-size: calc(var(--clock-size) * 0.12);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+      color: #ffffff;
+      text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
+    }
+
+    .hour-tag {
+      position: relative;
+      z-index: 2;
+      margin-top: 3px;
+      font-size: calc(var(--clock-size) * 0.024);
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      color: rgba(255, 255, 255, 0.68);
+      text-transform: uppercase;
+    }
+
+    /* Compact 3 o'clock pointer & minute pill window (unobstructive to minute dial) */
+    .pointer-bracket {
+      position: absolute;
+      top: 50%;
+      right: calc(var(--clock-size) * -0.018);
+      transform: translateY(-50%);
+      width: calc(var(--clock-size) * 0.145);
+      height: calc(var(--clock-size) * 0.088);
+      border-top: 1.5px solid rgba(255, 255, 255, 0.55);
+      border-bottom: 1.5px solid rgba(255, 255, 255, 0.55);
+      border-left: 1.5px solid rgba(255, 255, 255, 0.55);
+      border-radius: 999px 0 0 999px;
+      background: rgba(5, 5, 7, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding-left: calc(var(--clock-size) * 0.008);
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .minute-pill {
+      width: calc(var(--clock-size) * 0.076);
+      height: calc(var(--clock-size) * 0.076);
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.85);
+      background: rgba(10, 11, 16, 0.94);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: calc(var(--clock-size) * 0.042);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.9);
+    }
+
+    .sec-marker {
+      position: absolute;
+      right: calc(var(--clock-size) * 0.01);
+      top: 50%;
+      transform: translateY(-50%);
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    /* Info & Controls */
+    .meta-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      max-width: 460px;
+    }
+
+    .digital-readout {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.03em;
+      text-align: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .digital-time {
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.98rem;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: rgba(255, 255, 255, 0.82);
+      padding: 7px 13px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+    }
+
+    .btn.active {
+      background: rgba(56, 189, 248, 0.16);
+      border-color: rgba(56, 189, 248, 0.55);
+      color: #ffffff;
+    }
+
+    @media (max-width: 420px) {
+      :root {
+        --clock-size: min(84vw, 56vh);
+      }
+      .btn {
+        padding: 6px 11px;
+        font-size: 0.76rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage" aria-label="24-Hour Concentric Analog Clock">
+    <div class="clock" id="clock">
+      <div class="ring seconds" id="secondsRing" aria-hidden="true"></div>
+      <div class="ring minutes" id="minutesRing" aria-hidden="true"></div>
+
+      <div class="hour-center is-night" id="hourCenter">
+        <svg class="celestial-svg" viewBox="0 0 120 120" aria-hidden="true">
+          <defs>
+            <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#fde047" stop-opacity="1" />
+              <stop offset="55%" stop-color="#f59e0b" stop-opacity="0.85" />
+              <stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+            </radialGradient>
+            <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#e0e7ff" stop-opacity="0.85" />
+              <stop offset="65%" stop-color="#818cf8" stop-opacity="0.25" />
+              <stop offset="100%" stop-color="#818cf8" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+
+          <!-- Subtle celestial arc path -->
+          <path d="M 18 58 A 42 34 0 0 1 102 58" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="2.5 3.5" />
+
+          <!-- Twinkling night stars -->
+          <g id="nightStars">
+            <circle cx="30" cy="28" r="0.9" fill="#cbd5e1" opacity="0.7" />
+            <circle cx="88" cy="26" r="1.1" fill="#e2e8f0" opacity="0.8" />
+            <circle cx="60" cy="15" r="0.8" fill="#cbd5e1" opacity="0.6" />
+            <circle cx="22" cy="44" r="0.7" fill="#94a3b8" opacity="0.6" />
+            <circle cx="96" cy="42" r="0.8" fill="#cbd5e1" opacity="0.7" />
+          </g>
+
+          <!-- Sun orb -->
+          <g id="sunBody" transform="translate(60, 24)" style="display:none;">
+            <circle cx="0" cy="0" r="13" fill="url(#sunGlow)" />
+            <circle cx="0" cy="0" r="6" fill="#fde047" />
+            <g stroke="#fde047" stroke-width="1.2" stroke-linecap="round" opacity="0.9">
+              <line x1="0" y1="-9.2" x2="0" y2="-7.2" />
+              <line x1="0" y1="7.2" x2="0" y2="9.2" />
+              <line x1="-9.2" y1="0" x2="-7.2" y2="0" />
+              <line x1="7.2" y1="0" x2="9.2" y2="0" />
+              <line x1="-6.5" y1="-6.5" x2="-5.1" y2="-5.1" />
+              <line x1="5.1" y1="5.1" x2="6.5" y2="6.5" />
+              <line x1="-6.5" y1="6.5" x2="-5.1" y2="5.1" />
+              <line x1="5.1" y1="-5.1" x2="6.5" y2="-6.5" />
+            </g>
+          </g>
+
+          <!-- Moon orb -->
+          <g id="moonBody" transform="translate(60, 24)">
+            <circle cx="0" cy="0" r="13" fill="url(#moonGlow)" />
+            <path d="M 1.5 -5.8 A 6 6 0 1 0 6.2 2.4 A 4.8 4.8 0 1 1 1.5 -5.8 Z" fill="#e2e8f0" />
+          </g>
+        </svg>
+
+        <div class="hour-value" id="hourValue">00</div>
+        <div class="hour-tag" id="hourTag">24H • MOON</div>
+      </div>
+
+      <div class="pointer-bracket" aria-hidden="true">
+        <div class="minute-pill" id="minuteValue">00</div>
+        <div class="sec-marker"></div>
+      </div>
+    </div>
+  </main>
+
+  <section class="meta-bar" aria-label="Clock controls and digital readout">
+    <div class="digital-readout">
+      <span class="digital-time" id="digitalTime">00:00:00</span>
+      <span>•</span>
+      <span id="digitalDate">Loading date...</span>
+    </div>
+    <div class="controls">
+      <button type="button" class="btn active" id="toggleFormat" aria-pressed="true">Format: 24H</button>
+      <button type="button" class="btn active" id="toggleMotion" aria-pressed="true">Motion: Smooth</button>
+      <button type="button" class="btn" id="toggleSound" aria-pressed="false">Sound: Off</button>
+      <button type="button" class="btn active" id="toggleSky" aria-pressed="true">Sky: Auto</button>
+    </div>
+  </section>
+
+  <script>
+    (function () {
+      const secondsRing = document.getElementById("secondsRing");
+      const minutesRing = document.getElementById("minutesRing");
+      const hourCenter = document.getElementById("hourCenter");
+      const sunBody = document.getElementById("sunBody");
+      const moonBody = document.getElementById("moonBody");
+      const nightStars = document.getElementById("nightStars");
+      const hourValueEl = document.getElementById("hourValue");
+      const hourTagEl = document.getElementById("hourTag");
+      const minuteValueEl = document.getElementById("minuteValue");
+      const digitalTimeEl = document.getElementById("digitalTime");
+      const digitalDateEl = document.getElementById("digitalDate");
+
+      const toggleFormatBtn = document.getElementById("toggleFormat");
+      const toggleMotionBtn = document.getElementById("toggleMotion");
+      const toggleSoundBtn = document.getElementById("toggleSound");
+      const toggleSkyBtn = document.getElementById("toggleSky");
+
+      const state = {
+        is24Hour: true,
+        isSmooth: true,
+        soundOn: false,
+        skyMode: "auto", // "auto" | "day" | "night"
+        lastSecond: -1,
+        audioCtx: null,
+        rafId: null
+      };
+
+      function pad2(n) {
+        return String(n).padStart(2, "0");
+      }
+
+      function buildRing(container) {
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < 60; i++) {
+          const spike = document.createElement("div");
+          const isMajor = i % 5 === 0;
+          spike.className = isMajor ? "spike major" : "spike";
+          const angle = i * 6;
+          spike.style.setProperty("--angle", angle + "deg");
+
+          if (isMajor) {
+            const label = document.createElement("span");
+            label.className = "spike-label";
+            label.textContent = String(i);
+            spike.appendChild(label);
+          }
+          frag.appendChild(spike);
+        }
+        container.appendChild(frag);
+      }
+
+      function playTickSound() {
+        if (!state.soundOn) return;
+        try {
+          if (!state.audioCtx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            state.audioCtx = new AudioCtx();
+          }
+          if (state.audioCtx.state === "suspended") {
+            state.audioCtx.resume();
+          }
+          const ctx = state.audioCtx;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(1100, now);
+          osc.frequency.exponentialRampToValueAtTime(320, now + 0.025);
+
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.028);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.03);
+        } catch (err) {
+          // Ignore audio errors if blocked
+        }
+      }
+
+      function updateCelestial(hours24, minutes) {
+        const isActualDay = hours24 >= 6 && hours24 < 18;
+        const showDay = state.skyMode === "day" || (state.skyMode === "auto" && isActualDay);
+
+        let progress = 0.5;
+        if (showDay) {
+          if (isActualDay) {
+            progress = (hours24 - 6 + minutes / 60) / 12;
+          } else {
+            const nightHours = hours24 >= 18 ? hours24 - 18 : hours24 + 6;
+            progress = (nightHours + minutes / 60) / 12;
+          }
+        } else {
+          if (!isActualDay) {
+            const nightHours = hours24 >= 18 ? hours24 - 18 : hours24 + 6;
+            progress = (nightHours + minutes / 60) / 12;
+          } else {
+            progress = (hours24 - 6 + minutes / 60) / 12;
+          }
+        }
+
+        progress = Math.max(0, Math.min(1, progress));
+        // Arc center (60, 58), rx=42, ry=34, angle from PI (left) to 0 (right)
+        const theta = Math.PI * (1 - progress);
+        const cx = 60 + 42 * Math.cos(theta);
+        const cy = 58 - 34 * Math.sin(theta);
+
+        hourCenter.classList.toggle("is-day", showDay);
+        hourCenter.classList.toggle("is-night", !showDay);
+
+        if (showDay) {
+          sunBody.style.display = "block";
+          sunBody.setAttribute("transform", `translate(${cx.toFixed(1)}, ${cy.toFixed(1)})`);
+          moonBody.style.display = "none";
+          nightStars.style.display = "none";
+        } else {
+          sunBody.style.display = "none";
+          moonBody.style.display = "block";
+          moonBody.setAttribute("transform", `translate(${cx.toFixed(1)}, ${cy.toFixed(1)})`);
+          nightStars.style.display = "block";
+        }
+
+        return showDay ? "SUN" : "MOON";
+      }
+
+      function updateClock() {
+        const now = new Date();
+        const hours24 = now.getHours();
+        const minutes = now.getMinutes();
+        const seconds = now.getSeconds();
+        const ms = now.getMilliseconds();
+
+        if (seconds !== state.lastSecond) {
+          if (state.lastSecond !== -1) {
+            playTickSound();
+          }
+          state.lastSecond = seconds;
+
+          const celestialLabel = updateCelestial(hours24, minutes);
+
+          // Update text readouts
+          if (state.is24Hour) {
+            hourValueEl.textContent = pad2(hours24);
+            hourTagEl.textContent = `24H • ${celestialLabel}`;
+            digitalTimeEl.textContent = `${pad2(hours24)}:${pad2(minutes)}:${pad2(seconds)}`;
+          } else {
+            const period = hours24 >= 12 ? "PM" : "AM";
+            const hours12 = hours24 % 12 || 12;
+            hourValueEl.textContent = pad2(hours12);
+            hourTagEl.textContent = `${period} • ${celestialLabel}`;
+            digitalTimeEl.textContent = `${pad2(hours12)}:${pad2(minutes)}:${pad2(seconds)} ${period}`;
+          }
+
+          minuteValueEl.textContent = pad2(minutes);
+          digitalDateEl.textContent = now.toLocaleDateString(undefined, {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+          });
+        }
+
+        // Calculate ring rotations so current second/minute aligns at 3 o'clock (0 deg)
+        const secFraction = state.isSmooth ? seconds + ms / 1000 : seconds;
+        const minFraction = state.isSmooth ? minutes + secFraction / 60 : minutes;
+
+        const secRot = -(secFraction * 6);
+        const minRot = -(minFraction * 6);
+
+        secondsRing.style.transform = `rotate(${secRot}deg)`;
+        secondsRing.style.setProperty("--ring-rot", `${secRot}deg`);
+
+        minutesRing.style.transform = `rotate(${minRot}deg)`;
+        minutesRing.style.setProperty("--ring-rot", `${minRot}deg`);
+
+        state.rafId = requestAnimationFrame(updateClock);
+      }
+
+      toggleFormatBtn.addEventListener("click", () => {
+        state.is24Hour = !state.is24Hour;
+        state.lastSecond = -1;
+        toggleFormatBtn.textContent = state.is24Hour ? "Format: 24H" : "Format: 12H";
+        toggleFormatBtn.classList.toggle("active", state.is24Hour);
+        toggleFormatBtn.setAttribute("aria-pressed", String(state.is24Hour));
+      });
+
+      toggleMotionBtn.addEventListener("click", () => {
+        state.isSmooth = !state.isSmooth;
+        toggleMotionBtn.textContent = state.isSmooth ? "Motion: Smooth" : "Motion: Tick";
+        toggleMotionBtn.classList.toggle("active", state.isSmooth);
+        toggleMotionBtn.setAttribute("aria-pressed", String(state.isSmooth));
+      });
+
+      toggleSoundBtn.addEventListener("click", () => {
+        state.soundOn = !state.soundOn;
+        if (state.soundOn && !state.audioCtx) {
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) state.audioCtx = new AudioCtx();
+          } catch (e) {}
+        }
+        toggleSoundBtn.textContent = state.soundOn ? "Sound: On" : "Sound: Off";
+        toggleSoundBtn.classList.toggle("active", state.soundOn);
+        toggleSoundBtn.setAttribute("aria-pressed", String(state.soundOn));
+      });
+
+      toggleSkyBtn.addEventListener("click", () => {
+        const order = ["auto", "day", "night"];
+        state.skyMode = order[(order.indexOf(state.skyMode) + 1) % order.length];
+        state.lastSecond = -1;
+        const labelMap = { auto: "Sky: Auto", day: "Sky: Sun", night: "Sky: Moon" };
+        toggleSkyBtn.textContent = labelMap[state.skyMode];
+        toggleSkyBtn.classList.toggle("active", state.skyMode === "auto");
+        toggleSkyBtn.setAttribute("aria-pressed", String(state.skyMode === "auto"));
+      });
+
+      buildRing(secondsRing);
+      buildRing(minutesRing);
+      updateClock();
+    })();
+  </script>
+</body>
+</html>
